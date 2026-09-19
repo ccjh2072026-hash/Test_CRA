@@ -106,6 +106,21 @@
                         <label class="block text-sm font-medium text-slate-700 mb-1">諮商事由說明</label>
                         <textarea id="bookingReason" rows="3" placeholder="例如：輔導高關懷學生個案晤談" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"></textarea>
                     </div>
+
+                    <!-- [需求 1] 新增 指派諮商室 欄位 -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">指派諮商室</label>
+                        <select id="bookingRoom" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm bg-white">
+                            <option value="未指定">-- 未指定 --</option>
+                            <option value="輔導處小諮商室">輔導處小諮商室</option>
+                            <option value="團輔室">團輔室</option>
+                            <option value="資源中心">資源中心</option>
+                            <option value="諮商室A">諮商室A</option>
+                            <option value="諮商室B">諮商室B</option>
+                            <option value="沙遊室">沙遊室</option>
+                        </select>
+                    </div>
+
                     <button type="submit" id="submitBtn" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl shadow-md transition flex items-center justify-center space-x-2">
                         <i class="fa-solid fa-paper-plane"></i>
                         <span>送出預約申請</span>
@@ -239,7 +254,7 @@
                     </div>
                 </div>
 
-                <!-- [需求 1 & 2] 諮商對象編輯 區塊 (放置於 管理檢視模式 下方) -->
+                <!-- 諮商對象編輯 區塊 (放置於 管理檢視模式 下方) -->
                 <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
                     <h3 class="text-sm font-bold text-slate-800 flex items-center">
                         <i class="fa-solid fa-user-plus text-emerald-600 mr-2"></i> 諮商對象編輯
@@ -406,7 +421,7 @@
             renderBackendView();
         }
 
-        // [需求 3] 點擊 新增 按鈕，將學生編號與姓名儲存至後端 STUDENT_API_URL
+        // 點擊 新增 按鈕，將學生編號與姓名儲存至後端 STUDENT_API_URL
         async function addStudent() {
             const idInput = document.getElementById('newStudentId');
             const nameInput = document.getElementById('newStudentName');
@@ -685,6 +700,7 @@
             `).join('');
         }
 
+        // [需求 2] 送出預約申請時將選擇的 指派諮商室 (room) 一併送至 GAS_API_URL
         async function submitBooking(event) {
             event.preventDefault();
             const teacher = document.getElementById('teacherName').value.trim();
@@ -693,6 +709,7 @@
             
             const selectedStudent = document.getElementById('studentSelect').value;
             const inputReason = document.getElementById('bookingReason').value.trim();
+            const selectedRoom = document.getElementById('bookingRoom').value || "未指定"; // 取得指派諮商室內容
 
             const todayStr = new Date().toISOString().split('T')[0];
 
@@ -720,6 +737,9 @@
             const newItems = [];
             checkboxes.forEach((cb) => {
                 const newId = "B" + Math.floor(1000000 + Math.random() * 9000000);
+                // 若前台直接選擇了非未指定的諮商室，狀態設為已排定，否則為待審核
+                const calculatedStatus = (selectedRoom !== "未指定") ? "已排定" : "待審核";
+
                 newItems.push({
                     id: newId,
                     teacher: teacher,
@@ -730,8 +750,8 @@
                     period: cb.value,
                     target: selectedStudent || '',
                     reason: inputReason || '無特別註記',
-                    room: "未指定",
-                    status: "待審核"
+                    room: selectedRoom,
+                    status: calculatedStatus
                 });
             });
 
@@ -755,7 +775,7 @@
                     renderPeriodCheckboxes();
                     await fetchBookingsFromGAS();
 
-                    showAlert("預約申請已成功送出並同步至後端！請靜候輔導處後台管理者進行場地排配。", "預約成功", "success");
+                    showAlert("預約申請已成功送出並同步至後端！", "預約成功", "success");
                 } else {
                     showAlert("儲存預約單時發生錯誤：" + resData.message, "錯誤", "warning");
                 }
@@ -1030,6 +1050,7 @@
             }
         }
 
+        // [需求 3] 一週課表檢視：顯示所有紀錄（包含「已排定」與「待審核」/ 未指定空間者）
         function renderScheduleGrid() {
             const tbody = document.getElementById('scheduleGridBody');
             const selectEl = document.getElementById('scheduleWeekSelect');
@@ -1050,7 +1071,8 @@
                 }
             }
 
-            const weekBookings = bookings.filter(b => b.week === selectedWeek && b.room !== '未指定');
+            // 修改處：取消過濾 b.room !== '未指定'，讓所有預約記錄均顯示於課表中
+            const weekBookings = bookings.filter(b => b.week === selectedWeek);
 
             tbody.innerHTML = PERIODS.map(period => {
                 return `
@@ -1066,10 +1088,18 @@
                                     ${matched.length === 0 ? '<span class="text-slate-300 text-xs italic">-</span>' :
                                         matched.map(m => {
                                             const targetText = m.target || m.student || '';
+                                            const isPending = (m.status === '待審核' || m.room === '未指定');
+                                            
+                                            // 根據審核狀態顯示不同色彩樣式 (待審核為黃色警告風，已排定為綠色風)
+                                            const cardBg = isPending ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200';
+                                            const badgeBg = isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800';
+
                                             return `
-                                                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2 mb-1.5 shadow-sm text-left">
+                                                <div class="${cardBg} border rounded-xl p-2 mb-1.5 shadow-sm text-left">
                                                     <div class="flex items-center justify-between">
-                                                        <span class="font-bold text-emerald-800 text-[11px] bg-emerald-100 px-1.5 py-0.5 rounded">${m.room}</span>
+                                                        <span class="font-bold text-[11px] ${badgeBg} px-1.5 py-0.5 rounded">
+                                                            ${m.room || '未指定'} ${isPending ? '(待審核)' : ''}
+                                                        </span>
                                                         <span class="text-[10px] text-slate-500">${m.date}</span>
                                                     </div>
                                                     
